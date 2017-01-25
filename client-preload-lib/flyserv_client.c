@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <stdarg.h>
+#include <time.h>
+#include <unistd.h>
 
 #include "/usr/include/asm/ioctl.h"
 #include "/usr/include/linux/usbdevice_fs.h"
@@ -118,7 +120,6 @@ int open64(const char *pathname, int flags, ...)
 	int mode = 0;	
 
 	if (strcmp(pathname, getenv_string("FLY_USB_DEVICE")) == 0) {
-		//printf("**Device Opened\n");
 		return EMU_FD;
 	}
 
@@ -154,10 +155,10 @@ read_socket(int client_fd, void *buf, int buf_size)
 static int
 do_sync_client_request(
 		client_msg_t *cmsg, 
-		void *data_out, int data_out_len,
-		void *data_in, int data_in_len)
+		void *data_out, unsigned int data_out_len,
+		void *data_in, unsigned int data_in_len)
 {
-	int msgid = cmsg->msg_id;
+	unsigned int msgid = cmsg->msg_id;
 
 	if (write(CLIENT_SOCKET, cmsg, sizeof(*cmsg)) != sizeof(*cmsg))
 		err(1, "Error transmitting to server: message");
@@ -224,8 +225,6 @@ int ioctl(
 	memset(&cmsg, 0, sizeof(cmsg));
 	cmsg.msg_id = rand();
 
-	//printf("**IOCTL %u\n", request);
-	
 	switch(request) {
 	case USBDEVFS_RESETEP:
 		retval = 0;
@@ -254,10 +253,6 @@ int ioctl(
 		break;
 	case USBDEVFS_CONTROL:
 		cxfer = (struct usbdevfs_ctrltransfer*)arg;
-		/*printf("** CTRL: %u %u %u\n",
-			(unsigned int)cxfer->bRequest,
-			(unsigned int)cxfer->bRequestType,
-			(unsigned int)cxfer->wIndex);*/
 		cmsg.msg_type_id = MSG_CONTROL; 
 		cmsg.usb_request_type = cxfer->bRequestType;
 		cmsg.usb_request_id = cxfer->bRequest;
@@ -325,7 +320,6 @@ int ioctl(
 			retval = 0;
 			//print_urb("REAPURB", urb);
 		} else if (cmsg.msg_type_id == MSG_PENDING) {
-			//printf("***PENDING\n");
 			errno = EAGAIN;
 			retval = -1;
 		} else {
