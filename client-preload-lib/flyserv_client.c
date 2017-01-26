@@ -10,13 +10,16 @@
 #include <stdarg.h>
 #include <time.h>
 #include <unistd.h>
+#include <dirent.h>
 
 #include "/usr/include/asm/ioctl.h"
 #include "/usr/include/linux/usbdevice_fs.h"
 
 #include "flyserv_msg.h"
 
-static void
+
+__attribute__ ((unused))
+static void 
 print_urb(const char *fn, struct usbdevfs_urb *urb)
 {
 		printf("**%s: type: %u, endpoint %u, status %d, "
@@ -39,13 +42,39 @@ print_urb(const char *fn, struct usbdevfs_urb *urb)
 
 static void *LIBC_HANDLE = 0;
 static int CLIENT_SOCKET = -1;
-static int EMU_FD = 1048576;
+
+static int EMU_FD = 				(1048576 + 13);
+static DIR *EMU_DEVICES_DIR_PTR = 		0;
+#define EMU_VENDORID_FNAME 	"idVendor"
+#define EMU_PRODUCTID_FNAME 	"idProduct"
+#define EMU_BUSNUM_FNAME 	"busnum"
+#define EMU_DEVNUM_FNAME 	"devnum"
+
+#define EMU_DEVICE_FNAME	"/proc/bus/usb/1048576/002"
+#define EMU_READDIR_USB_DEVNAME	"1048576-2"
+#define EMU_OPEN_USB_BASE	"/sys/bus/usb/devices/1048576-2/"
+
+#define EMU_OPEN_USB_VENDORID	EMU_OPEN_USB_BASE EMU_VENDORID_FNAME
+#define EMU_OPEN_USB_PRODUCTID	EMU_OPEN_USB_BASE EMU_PRODUCTID_FNAME
+#define EMU_OPEN_USB_BUSNUM	EMU_OPEN_USB_BASE EMU_BUSNUM_FNAME
+#define EMU_OPEN_USB_DEVNUM	EMU_OPEN_USB_BASE EMU_DEVNUM_FNAME
+
+
 
 typedef int (*fun_open_t)(const char*, int flags, ...);
-fun_open_t FUN_OPEN = 0;
+fun_open_t FUN_OPEN64 = 0;
 
 typedef int (*fun_ioctl_t)(int fd, unsigned int request, ...);
 fun_ioctl_t FUN_IOCTL = 0;
+
+typedef struct dirent64* (*fun_readdir64_t) (DIR *);
+fun_readdir64_t FUN_READDIR64 = 0;
+
+typedef DIR* (*fun_opendir_t)(const char *name);
+fun_opendir_t FUN_OPENDIR = 0;
+
+typedef FILE* (*fun_fopen64_t)(const char *path, const char *mode);
+fun_fopen64_t FUN_FOPEN64 = 0;
 
 
 static const char*
@@ -72,7 +101,7 @@ getenv_int(const char* var_name)
 }
 
 static void
-initialize_usb_client()
+initialize_network_client()
 {
 	struct sockaddr_in sa;
 	memset(&sa, 0, sizeof(sa));
@@ -102,24 +131,54 @@ _LIB_CONSTRUCTOR()
 		err(1, "Error opening libc.so.6");
 
 	dlerror();
-	FUN_OPEN = dlsym(LIBC_HANDLE, "open64");
+	FUN_OPEN64 = dlsym(LIBC_HANDLE, "open64");
 	if ( (emsg = dlerror()) != NULL)
-		err(1, "open64: DLSYM error");
+		errx(1, "DLSYM error: open64");
+
+	FUN_FOPEN64 = dlsym(LIBC_HANDLE, "fopen64");
+	if ( (emsg = dlerror()) != NULL)
+		errx(1, "DLSYM error: fopen");
 
 	FUN_IOCTL = dlsym(LIBC_HANDLE, "ioctl");
 	if ( (emsg = dlerror()) != NULL)
-		err(1, "ioctl: DLSYM error");
+		errx(1, "DLSYM error: ioctl");
+
+	FUN_READDIR64 = dlsym(LIBC_HANDLE, "readdir64");
+	if ( (emsg = dlerror()) != NULL)
+		errx(1, "DLSYM error: readdir64");
+
+	FUN_OPENDIR = dlsym(LIBC_HANDLE, "opendir");
+	if ( (emsg = dlerror()) != NULL)
+		errx(1, "DLSYM error: opendir");
 
 	/* Open connection to USB server */
-	initialize_usb_client();
+	initialize_network_client();
 }
 
 
-int open64(const char *pathname, int flags, ...)
+FILE* 
+fopen64(const char *path, const char *mode)
+{
+	if (strcmp(path, EMU_OPEN_USB_VENDORID) == 0) {
+		path = EMU_VENDORID_FNAME;
+	} else if(strcmp(path, EMU_OPEN_USB_PRODUCTID) == 0) {
+		path = EMU_PRODUCTID_FNAME;
+	} else if(strcmp(path, EMU_OPEN_USB_BUSNUM) == 0) {
+		path = EMU_BUSNUM_FNAME;
+	} else if(strcmp(path, EMU_OPEN_USB_DEVNUM) == 0) {
+		path = EMU_DEVNUM_FNAME;
+	}
+
+	return (*FUN_FOPEN64)(path, mode);
+}
+
+
+int
+open64(const char *pathname, int flags, ...)
 {
 	int mode = 0;	
 
-	if (strcmp(pathname, getenv_string("FLY_USB_DEVICE")) == 0) {
+	if (strcmp(pathname, EMU_DEVICE_FNAME) == 0) {
 		return EMU_FD;
 	}
 
@@ -130,8 +189,54 @@ int open64(const char *pathname, int flags, ...)
       		va_end(arg);
     	}
 
-	int rv = (*FUN_OPEN)(pathname, flags, mode);
-	return rv;
+	return (*FUN_OPEN64)(pathname, flags, mode);
+}
+
+
+struct dirent64
+{
+	__ino64_t d_ino;
+	__off64_t d_off;
+	unsigned short int d_reclen;
+	unsigned char d_type;
+	char d_name[256];           /* We must not include limits.h! */
+};
+
+
+struct dirent64* 
+readdir64(DIR *dirp)
+{
+	static int read_ctr = 0;
+	static struct dirent64 dent;
+
+	if (dirp == EMU_DEVICES_DIR_PTR) {
+		if (read_ctr == 0) {
+			dent.d_ino = 275078;
+			dent.d_off = 1539482829;
+			dent.d_reclen = 24;
+			dent.d_type = 4;
+			strcpy(dent.d_name, EMU_READDIR_USB_DEVNAME);
+			++read_ctr;
+			errno = 1;
+			return &dent;
+		} else {
+			read_ctr = 0;
+			return 0;
+		}
+	}
+	return (*FUN_READDIR64)(dirp);
+}
+
+
+DIR*
+opendir(const char *name)
+{
+	DIR *dirp = (*FUN_OPENDIR)(name);
+
+	if (strcmp(name, "/sys/bus/usb/devices") == 0)
+		EMU_DEVICES_DIR_PTR = dirp;
+
+	return dirp;
 }
 
 
@@ -197,7 +302,7 @@ do_sync_client_request(
 	return 0;
 }
 
-#define MAX_RESULT_SIZE	4096
+#define MAX_RESULT_SIZE	8192
 char RESULT[MAX_RESULT_SIZE];
 
 
