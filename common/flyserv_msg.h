@@ -35,6 +35,7 @@ typedef struct client_msg {
 #define MSG_BULK_TRANSFER_OUT	6
 #define MSG_BULK_TRANSFER_IN	7
 #define MSG_GET_TRANSFER_RESULT 8
+#define MSG_GET_PRODUCT_ID 	9
 
 #define USB_REQTYPE_DIR_IN	0x80
 
