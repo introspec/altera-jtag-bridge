@@ -156,12 +156,15 @@ _LIB_CONSTRUCTOR()
 }
 
 
+static void get_n_store_product_id();
+
 FILE* 
 fopen64(const char *path, const char *mode)
 {
 	if (strcmp(path, EMU_OPEN_USB_VENDORID) == 0) {
 		path = EMU_VENDORID_FNAME;
 	} else if(strcmp(path, EMU_OPEN_USB_PRODUCTID) == 0) {
+		get_n_store_product_id();
 		path = EMU_PRODUCTID_FNAME;
 	} else if(strcmp(path, EMU_OPEN_USB_BUSNUM) == 0) {
 		path = EMU_BUSNUM_FNAME;
@@ -304,6 +307,28 @@ do_sync_client_request(
 
 #define MAX_RESULT_SIZE	8192
 char RESULT[MAX_RESULT_SIZE];
+
+
+static void
+get_n_store_product_id()
+{
+	client_msg_t cmsg;
+	int retval;
+
+	memset(&cmsg, 0, sizeof(cmsg));
+	cmsg.msg_type_id = MSG_GET_PRODUCT_ID;
+
+	retval = do_sync_client_request(&cmsg, 0, 0, 0, 0);
+	if (retval != 0)
+		errx(1, "Error retrieving Programmer Product ID from server\n");
+
+	FILE *fp = fopen(EMU_PRODUCTID_FNAME, "w");
+	if (!fp)
+		err(1, "Error opening file %s\n", EMU_PRODUCTID_FNAME);
+
+	fprintf(fp, "%x\n", cmsg.usb_iface_nr);
+	fclose(fp);
+}
 
 
 int ioctl(
