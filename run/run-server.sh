@@ -1,5 +1,6 @@
 #!/bin/tcsh
 
-source `dirname $0`/server-env
+cd `dirname $0`
+source server-env
 
-`dirname $0`/../server/flyserv
+../server/flyserv
