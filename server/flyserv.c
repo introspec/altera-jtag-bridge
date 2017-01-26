@@ -23,6 +23,7 @@
 #define DATA_MAX_SIZE 		4096
 
 #define USB_MAX_TRANSFERS	2
+#define USB_REOPEN_SLEEP_SEC	10
 
 #define TR_OUT_IDX		0
 #define TR_IN_IDX		1
@@ -120,16 +121,6 @@ allocate_usb_device()
 }
 
 
-static void
-free_usb_device()
-{
-	if (USB_DEVH) {
-		libusb20_dev_close(USB_DEVH);
-		USB_DEVH = 0;
-	}
-}
-
-
 static int
 write_client_msg(int client_fd, client_msg_t *msg)
 {
@@ -190,6 +181,17 @@ clear_results()
 	while ( (result = get_result())) {
 		free(result->inout_data);
 		free(result);	
+	}
+}
+
+
+static void
+free_usb_device()
+{
+	clear_results();
+	if (USB_DEVH) {
+		libusb20_dev_close(USB_DEVH);
+		USB_DEVH = 0;
 	}
 }
 
@@ -274,6 +276,12 @@ client_loop(int client_fd)
 		    msg.msg_type_id = MSG_OK;
 		    if (write_client_msg(client_fd, &msg) < 0)
 			return;
+		    free_usb_device();
+		    sleep(USB_REOPEN_SLEEP_SEC);
+		    if ( (USB_DEVH = allocate_usb_device()) == NULL) {
+			warnx("Error opening USB programmer device");
+			return; 
+		    }
 		    break;
 
 		case MSG_SET_INTERFACE:
@@ -482,7 +490,6 @@ service_client(int client_fd)
 		warnx("Error opening USB programmer device");
 	}
 	free_usb_device();
-	clear_results();
 }
 
 
