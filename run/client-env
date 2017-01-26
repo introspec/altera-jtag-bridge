@@ -1,3 +1,2 @@
 declare -x FLY_SERVER_ADDR="10.0.2.2"
-declare -x FLY_SERVER_PORT="5432"
-declare -x FLY_USB_DEVICE="/proc/bus/usb/001/002"
+declare -x FLY_SERVER_PORT="1309"
