@@ -17,7 +17,8 @@
 #include "flyserv_msg.h"
 
 #define PGMR_VENDOR_ID		0x09fb
-#define PGMR_PRODUCT_ID		0x6010
+#define PGMR_PRODUCT_ID1	0x6810
+#define PGMR_PRODUCT_ID2	0x6010
 
 #define DATA_MAX_SIZE 		4096
 
@@ -29,6 +30,7 @@
 #define INFLIGHT_SLEEP_USEC	10000
 
 static struct libusb20_device 	*USB_DEVH;
+static uint16_t			USB_CUR_PRODUCT_ID;
 static volatile int 		OUT_INFLIGHT;
 static volatile int 		IN_INFLIGHT;
 
@@ -94,9 +96,11 @@ allocate_usb_device()
 		struct usb_device_info info;
 		if (libusb20_dev_open(devh, USB_MAX_TRANSFERS) == 0) {
 		    if (libusb20_dev_get_info(devh, &info) == 0) {
-			if (info.udi_productNo == PGMR_PRODUCT_ID &&
+			if ((info.udi_productNo == PGMR_PRODUCT_ID1 ||
+			     info.udi_productNo == PGMR_PRODUCT_ID2) &&
 			    info.udi_vendorNo  == PGMR_VENDOR_ID)
 			{
+			    USB_CUR_PRODUCT_ID = info.udi_productNo;
 			    found = 1;
 			}
 		    }
@@ -253,6 +257,13 @@ client_loop(int client_fd)
 		}
 
 		switch (msg.msg_type_id) {
+		case MSG_GET_PRODUCT_ID:
+	            msg.msg_type_id = MSG_OK;
+		    msg.usb_iface_nr = 	USB_CUR_PRODUCT_ID;
+		    if (write_client_msg(client_fd, &msg) < 0)
+			return;
+		    break;
+
 		case MSG_CLAIM_INTERFACE:
 	            msg.msg_type_id = MSG_OK;
 		    if (write_client_msg(client_fd, &msg) < 0)
