@@ -17,11 +17,13 @@
 #include "flyserv_msg.h"
 
 #define PGMR_VENDOR_ID		0x09fb
-#define PGMR_PRODUCT_ID		0x6010
+#define PGMR_PRODUCT_ID1	0x6810
+#define PGMR_PRODUCT_ID2	0x6010
 
 #define DATA_MAX_SIZE 		4096
 
 #define USB_MAX_TRANSFERS	2
+#define USB_REOPEN_SLEEP_SEC	10
 
 #define TR_OUT_IDX		0
 #define TR_IN_IDX		1
@@ -29,6 +31,7 @@
 #define INFLIGHT_SLEEP_USEC	10000
 
 static struct libusb20_device 	*USB_DEVH;
+static uint16_t			USB_CUR_PRODUCT_ID;
 static volatile int 		OUT_INFLIGHT;
 static volatile int 		IN_INFLIGHT;
 
@@ -94,9 +97,11 @@ allocate_usb_device()
 		struct usb_device_info info;
 		if (libusb20_dev_open(devh, USB_MAX_TRANSFERS) == 0) {
 		    if (libusb20_dev_get_info(devh, &info) == 0) {
-			if (info.udi_productNo == PGMR_PRODUCT_ID &&
+			if ((info.udi_productNo == PGMR_PRODUCT_ID1 ||
+			     info.udi_productNo == PGMR_PRODUCT_ID2) &&
 			    info.udi_vendorNo  == PGMR_VENDOR_ID)
 			{
+			    USB_CUR_PRODUCT_ID = info.udi_productNo;
 			    found = 1;
 			}
 		    }
@@ -113,16 +118,6 @@ allocate_usb_device()
 	OUT_INFLIGHT = 0;
 	IN_INFLIGHT = 0;
 	return devh;
-}
-
-
-static void
-free_usb_device()
-{
-	if (USB_DEVH) {
-		libusb20_dev_close(USB_DEVH);
-		USB_DEVH = 0;
-	}
 }
 
 
@@ -190,6 +185,17 @@ clear_results()
 }
 
 
+static void
+free_usb_device()
+{
+	clear_results();
+	if (USB_DEVH) {
+		libusb20_dev_close(USB_DEVH);
+		USB_DEVH = 0;
+	}
+}
+
+
 void
 transfer_out_cb(struct libusb20_transfer *txfer)
 { 
@@ -253,6 +259,13 @@ client_loop(int client_fd)
 		}
 
 		switch (msg.msg_type_id) {
+		case MSG_GET_PRODUCT_ID:
+	            msg.msg_type_id = MSG_OK;
+		    msg.usb_iface_nr = 	USB_CUR_PRODUCT_ID;
+		    if (write_client_msg(client_fd, &msg) < 0)
+			return;
+		    break;
+
 		case MSG_CLAIM_INTERFACE:
 	            msg.msg_type_id = MSG_OK;
 		    if (write_client_msg(client_fd, &msg) < 0)
@@ -263,6 +276,12 @@ client_loop(int client_fd)
 		    msg.msg_type_id = MSG_OK;
 		    if (write_client_msg(client_fd, &msg) < 0)
 			return;
+		    free_usb_device();
+		    sleep(USB_REOPEN_SLEEP_SEC);
+		    if ( (USB_DEVH = allocate_usb_device()) == NULL) {
+			warnx("Error opening USB programmer device");
+			return; 
+		    }
 		    break;
 
 		case MSG_SET_INTERFACE:
@@ -471,7 +490,6 @@ service_client(int client_fd)
 		warnx("Error opening USB programmer device");
 	}
 	free_usb_device();
-	clear_results();
 }
 
 
