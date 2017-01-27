@@ -17,28 +17,7 @@
 
 #include "flyserv_msg.h"
 
-
-__attribute__ ((unused))
-static void 
-print_urb(const char *fn, struct usbdevfs_urb *urb)
-{
-		printf("**%s: type: %u, endpoint %u, status %d, "
-		       "flags %u, buffer %p, buflen %d, "
-		       "actlen %d, start_frame %d, "
-		       "errcount %d, signr %u, uctxt %p\n",
-		       fn,
-		       (unsigned int)urb->type,
-		       (unsigned int)urb->endpoint,
-		       (int)urb->status,
-		       (unsigned int)urb->flags, 
-		       urb->buffer,
-		       (int)urb->buffer_length,
-		       (int)urb->actual_length,
-		       (int)urb->start_frame,
-		       (int)urb->error_count,
-		       (unsigned int)urb->signr,
-		       urb->usercontext);
-}
+#define CMD_INTERSPACE_USEC	1000
 
 static void *LIBC_HANDLE = 0;
 static int CLIENT_SOCKET = -1;
@@ -99,6 +78,30 @@ getenv_int(const char* var_name)
 			var_value);
 	return num;
 }
+
+
+__attribute__ ((unused))
+static void 
+print_urb(const char *fn, struct usbdevfs_urb *urb)
+{
+		printf("**%s: type: %u, endpoint %u, status %d, "
+		       "flags %u, buffer %p, buflen %d, "
+		       "actlen %d, start_frame %d, "
+		       "errcount %d, signr %u, uctxt %p\n",
+		       fn,
+		       (unsigned int)urb->type,
+		       (unsigned int)urb->endpoint,
+		       (int)urb->status,
+		       (unsigned int)urb->flags, 
+		       urb->buffer,
+		       (int)urb->buffer_length,
+		       (int)urb->actual_length,
+		       (int)urb->start_frame,
+		       (int)urb->error_count,
+		       (unsigned int)urb->signr,
+		       urb->usercontext);
+}
+
 
 static void
 initialize_network_client()
@@ -462,7 +465,7 @@ int ioctl(
 		errx(1, "**IOCTL NOT Implemented: %u", request);
 		break;
 	}
-	usleep(10000);
+	usleep(CMD_INTERSPACE_USEC);
 	return retval;
 }
 
