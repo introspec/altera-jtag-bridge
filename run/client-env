@@ -1,2 +1,2 @@
-declare -x FLY_SERVER_ADDR="10.0.2.2"
+declare -x FLY_SERVER_ADDR="10.0.3.2"
 declare -x FLY_SERVER_PORT="1309"
